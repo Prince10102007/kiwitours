@@ -1,19 +1,19 @@
-"""Gemini AI integration service with RAG support."""
+"""Gemini AI integration service."""
 
 import google.generativeai as genai
 
 from ..config import get_settings
 from ..models.schemas import Package
-from .rag_service import rag_service
+# RAG disabled for lighter deployment
+# from .rag_service import rag_service
 
 
 class GeminiService:
-    """Service for AI-powered chat responses using Gemini with RAG."""
+    """Service for AI-powered chat responses using Gemini."""
 
     def __init__(self):
         self._model = None
         self._settings = get_settings()
-        self._rag_initialized = False
         self._system_prompt = """You are a friendly and knowledgeable travel assistant for NZ Tours,
 a New Zealand travel agency. You help customers plan their perfect New Zealand adventure.
 
@@ -41,20 +41,11 @@ for topics not covered in the knowledge base."""
                     return None
 
                 genai.configure(api_key=api_key)
-                self._model = genai.GenerativeModel("gemini-2.5-flash")
+                self._model = genai.GenerativeModel("gemini-2.0-flash")
             except Exception as e:
                 print(f"Error initializing Gemini: {e}")
                 return None
         return self._model
-
-    def _ensure_rag_initialized(self):
-        """Ensure RAG system is initialized."""
-        if not self._rag_initialized:
-            try:
-                rag_service.initialize()
-                self._rag_initialized = True
-            except Exception as e:
-                print(f"Error initializing RAG: {e}")
 
     def _format_packages_context(self, packages: list[Package]) -> str:
         """Format packages as context for the AI."""
@@ -76,41 +67,32 @@ for topics not covered in the knowledge base."""
         packages: list[Package],
         conversation_history: list[dict] = None
     ) -> str:
-        """Generate an AI response using RAG + Gemini."""
-
-        # Ensure RAG is initialized
-        self._ensure_rag_initialized()
-
-        # Get relevant context from knowledge base
-        rag_context = rag_service.get_context_for_query(user_message)
+        """Generate an AI response using Gemini."""
 
         # Get model
         model = self._get_model()
 
         if model is None:
-            # Use RAG-enhanced fallback
-            return self._get_rag_fallback_response(user_message, rag_context)
+            return self._get_fallback_response(user_message)
 
         try:
             # Build packages context
             packages_context = self._format_packages_context(packages)
 
-            # Build the prompt with RAG context
+            # Build the prompt
             prompt = f"""{self._system_prompt}
 
-=== KNOWLEDGE BASE CONTEXT ===
-{rag_context}
+=== AVAILABLE PACKAGES ===
 {packages_context}
 === END CONTEXT ===
 
 Customer message: {user_message}
 
 Instructions:
-1. Use the knowledge base context above to answer accurately
-2. If asking about packages, reference the available packages
-3. Be friendly and helpful, using "Kia Ora" naturally
-4. Keep response concise (2-3 paragraphs max)
-5. If unsure, say so and offer alternatives
+1. If asking about packages, reference the available packages
+2. Be friendly and helpful, using "Kia Ora" naturally
+3. Keep response concise (2-3 paragraphs max)
+4. If unsure, say so and offer alternatives
 
 Your response:"""
 
@@ -119,36 +101,13 @@ Your response:"""
 
         except Exception as e:
             print(f"Error generating Gemini response: {e}")
-            return self._get_rag_fallback_response(user_message, rag_context)
+            return self._get_fallback_response(user_message)
 
-    def _get_rag_fallback_response(self, user_message: str, rag_context: str) -> str:
-        """Provide fallback response using RAG context when Gemini is unavailable."""
+    def _get_fallback_response(self, user_message: str) -> str:
+        """Provide fallback response when Gemini is unavailable."""
         message_lower = user_message.lower()
 
-        # If RAG found relevant context, use it
-        if rag_context and "No specific information" not in rag_context:
-            # Extract the most relevant part
-            context_lines = rag_context.split('\n\n')
-            if context_lines:
-                first_context = context_lines[0]
-
-                # Check if it's a FAQ
-                if "Question:" in first_context and "Answer:" in first_context:
-                    answer_start = first_context.find("Answer:") + 7
-                    return f"Kia Ora! {first_context[answer_start:].strip()}"
-
-                # Check if it's destination info
-                if "Destination:" in first_context:
-                    return f"Kia Ora! {first_context.replace('Destination:', '').strip()} Would you like to know more or see available packages?"
-
-                # Check if it's activity info
-                if "Activity:" in first_context:
-                    return f"Kia Ora! {first_context.replace('Activity:', '').strip()} Would you like me to check availability?"
-
-                # Generic response with context
-                return f"Kia Ora! Based on your question, here's what I found: {first_context[:500]}... Would you like more details?"
-
-        # Keyword-based fallback if no RAG context
+        # Keyword-based fallback
         if any(word in message_lower for word in ["hello", "hi", "hey", "kia ora"]):
             return "Kia Ora! Welcome to NZ Tours. I'm here to help you plan your perfect New Zealand adventure. Feel free to ask about destinations, activities, booking policies, or anything else about traveling in New Zealand!"
 

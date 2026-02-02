@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import chat_router, packages_router, custom_trips_router, knowledge_router
+from .routers import chat_router, packages_router, custom_trips_router
+# knowledge_router disabled - requires heavy dependencies (chromadb, sentence-transformers)
 
 # Create FastAPI app
 app = FastAPI(
@@ -27,7 +28,7 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(packages_router)
 app.include_router(custom_trips_router)
-app.include_router(knowledge_router)
+# app.include_router(knowledge_router)  # Disabled for lighter deployment
 
 
 @app.get("/")
